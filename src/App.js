@@ -2,6 +2,10 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import WeatherCard from "./components/WeatherCard";
 import CityCard from "./components/CityCard";
+import SearchBar from "./components/SearchBar";
+import Header from "./components/Header";
+import { RxUpdate } from "react-icons/rx";
+import { GoCheckCircle } from "react-icons/go";
 
 const cities = [
   { name: "Ciudad de México", id: 3530597 },
@@ -13,83 +17,155 @@ const cities = [
   { name: "Puebla", id: 3521081 }
 ];
 
-// Componente SearchBar integrado
-function SearchBar({ onSearch }) {
-  const [input, setInput] = useState("");
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (input.trim()) {
-      onSearch(input.trim());
-      setInput("");
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="flex justify-center mb-8">
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Buscar ciudad..."
-        className="px-4 py-2 rounded-l-full outline-none text-black"
-      />
-      <button
-        type="submit"
-        className="bg-blue-700 px-4 py-2 rounded-r-full text-white font-semibold"
-      >
-        Buscar
-      </button>
-    </form>
-  );
-}
-
 export default function App() {
   const [weather, setWeather] = useState(null);
   const [selectedCity, setSelectedCity] = useState(cities[0]);
   const [loading, setLoading] = useState(false);
+  const [dateTime, setDateTime] = useState("");
+  const [citiesWeather, setCitiesWeather] = useState({});
+  const [notification, setNotification] = useState(null);
+  const [showNotification, setShowNotification] = useState(false);
+  const [manualSearch, setManualSearch] = useState(false);
 
-  const API_KEY = '069bd2b42ae56be5fac214ac801f2530';
+  const API_KEY = process.env.REACT_APP_OPENWEATHER_KEY;
 
-  // Buscar por nombre de ciudad usando la API
-  const fetchWeather = async (cityOrId) => {
+  const fetchWeather = async (cityOrId, showNotif = false) => {
     try {
       setLoading(true);
-      let url;
-      if (!isNaN(cityOrId)) {
-        url = `https://api.openweathermap.org/data/2.5/weather?id=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
-      } else {
-        url = `https://api.openweathermap.org/data/2.5/weather?q=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
+
+      if (showNotif) {
+        setNotification({ type: "loading", message: "Actualizando clima..." });
+        setShowNotification(true);
       }
+
+      let url;
+      if (process.env.NODE_ENV === "production") {
+        // Usa tu backend en producción
+        url = `/api/weather?city=${isNaN(cityOrId) ? cityOrId : cities.find(c => c.id === cityOrId).name}`;
+      } else {
+        // Usa OpenWeatherMap directamente en desarrollo
+        if (!isNaN(cityOrId)) {
+          url = `https://api.openweathermap.org/data/2.5/weather?id=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
+        } else {
+          url = `https://api.openweathermap.org/data/2.5/weather?q=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
+        }
+      }
+
       const res = await axios.get(url);
       setWeather(res.data);
-      // Elimina la actualización de selectedCity aquí
+
+      if (showNotif) {
+        setNotification({ type: "success", message: "Clima actualizado" });
+        setShowNotification(true);
+        setTimeout(() => setShowNotification(false), 1500);
+        setTimeout(() => setNotification(null), 2000);
+      }
     } catch (err) {
       console.error("Error obteniendo datos del clima", err);
       setWeather(null);
+
+      setNotification({ type: "error", message: "Error al actualizar el clima" });
+      setShowNotification(true);
+      setTimeout(() => setShowNotification(false), 1500);
+      setTimeout(() => setNotification(null), 2000);
     } finally {
       setLoading(false);
     }
   };
 
+  const formatDate = (date) => {
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    return `${hours}:${minutes}`;
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    fetchWeather(selectedCity.id);
+    if (!manualSearch) {
+      fetchWeather(selectedCity.id, false);
+    }
+    setManualSearch(false);
+    setDateTime(formatDate(new Date()));
+    const interval = setInterval(() => {
+      setDateTime(formatDate(new Date()));
+    }, 60000);
+    return () => clearInterval(interval);
   }, [selectedCity]);
 
-  return (
-    <div className="gradient-bg min-h-screen p-6">
-      {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-4xl md:text-5xl font-bold text-white mb-2">
-          🇲🇽 Clima México
-        </h1>
-        <p className="text-white/80 text-lg">
-          El clima actual en las principales ciudades de México
-        </p>
-      </div>
-      <SearchBar onSearch={fetchWeather} />
+  useEffect(() => {
+    const fetchAllCitiesWeather = async () => {
+      const weatherData = {};
+      for (const city of cities) {
+        try {
+          const url = `https://api.openweathermap.org/data/2.5/weather?id=${city.id}&units=metric&lang=es&appid=${API_KEY}`;
+          const res = await axios.get(url);
+          weatherData[city.id] = {
+            temp: `${Math.round(res.data.main.temp)}°C`,
+            condition: res.data.weather[0].description,
+            icon: res.data.weather[0].icon
+          };
+          // Espera 500ms entre peticiones
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } catch {
+          weatherData[city.id] = {
+            temp: "--",
+            condition: "Sin datos",
+            icon: null
+          };
+        }
+      }
+      setCitiesWeather(weatherData);
+    };
+    fetchAllCitiesWeather();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-      {/* Weather Card */}
+  const handleManualUpdate = () => {
+    fetchWeather(selectedCity.id, true);
+  };
+
+  const handleSearch = async (cityOrName) => {
+    const foundCity = cities.find(c => c.name.toLowerCase() === cityOrName.toLowerCase());
+    if (foundCity) {
+      setManualSearch(false);
+      setSelectedCity(foundCity);
+    } else {
+      try {
+        setLoading(true);
+        const url = `https://api.openweathermap.org/data/2.5/weather?q=${cityOrName}&units=metric&lang=es&appid=${API_KEY}`;
+        const res = await axios.get(url);
+        setWeather(res.data);
+        setManualSearch(true);
+        setSelectedCity({ name: res.data.name, id: res.data.id });
+      } catch (err) {
+        setWeather(null);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <div className="min-h-screen p-6 bg-gradient-to-br from-blue-900 via-blue-800 to-blue-600">
+      <Header dateTime={dateTime} />
+      <SearchBar onSearch={handleSearch} />
+
+      {/* Notificación animada */}
+      {notification && (
+        <div
+          className={`fixed top-6 right-8 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-lg z-50 transform transition-all duration-500 ease-in-out ${showNotification ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3"
+            }`}
+          style={{ minWidth: "220px" }}
+        >
+          <span className="flex items-center gap-2">
+            {notification.type === "loading" && <RxUpdate className="animate-spin" />}
+            {notification.type === "success" && <GoCheckCircle className="text-green-300" />}
+            {notification.type === "error" && "❌"}
+            {notification.message}
+          </span>
+        </div>
+      )}
+
       {weather && !loading && (
         <WeatherCard
           city={weather.name}
@@ -104,31 +180,38 @@ export default function App() {
       )}
 
       {loading && (
-        <div className="text-center text-white mt-8">⏳ Cargando clima...</div>
+        <div className="text-center text-white mt-8 animate-pulse">
+          ⏳ Cargando clima...
+        </div>
       )}
 
-      {/* Cities Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8 mt-8">
         {cities.map((city) => (
           <CityCard
             key={city.id}
             name={city.name}
+            temp={citiesWeather[city.id]?.temp}
+            condition={citiesWeather[city.id]?.condition}
+            icon={
+              citiesWeather[city.id]?.icon
+                ? `https://openweathermap.org/img/wn/${citiesWeather[city.id].icon}@2x.png`
+                : undefined
+            }
             onClick={() => setSelectedCity(city)}
           />
         ))}
       </div>
 
-      {/* Refresh Button */}
-      <div className="text-center">
+      {/* Botón de actualizar clima */}
+      <div className="flex justify-center my-8">
         <button
-          onClick={() => fetchWeather(selectedCity.id)}
-          className="glass-effect text-white px-8 py-3 rounded-full font-semibold hover:bg-white/20 transition-all duration-300 transform hover:scale-105"
+          onClick={handleManualUpdate}
+          className="bg-white/20 backdrop-blur-lg text-white px-8 py-3 rounded-full font-semibold hover:bg-white/30 transition-all duration-300 transform hover:scale-105 flex items-center gap-2"
         >
-          🔄 Actualizar clima
+          <RxUpdate /> Actualizar clima
         </button>
       </div>
 
-      {/* Footer */}
       <div className="text-center mt-12 text-white/60">
         <p className="text-sm">
           Datos del clima en tiempo real • Clima México {new Date().getFullYear()}
