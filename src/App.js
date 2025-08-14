@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import WeatherCard from "./components/WeatherCard";
 import CityCard from "./components/CityCard";
@@ -29,7 +29,7 @@ export default function App() {
 
   const API_KEY = process.env.REACT_APP_OPENWEATHER_KEY;
 
-  const fetchWeather = async (cityOrId, showNotif = false) => {
+  const fetchWeather = useCallback(async (cityOrId, showNotif = false) => {
     try {
       setLoading(true);
 
@@ -40,10 +40,8 @@ export default function App() {
 
       let url;
       if (process.env.NODE_ENV === "production") {
-        // Usa tu backend en producción
         url = `/api/weather?city=${isNaN(cityOrId) ? cityOrId : cities.find(c => c.id === cityOrId).name}`;
       } else {
-        // Usa OpenWeatherMap directamente en desarrollo
         if (!isNaN(cityOrId)) {
           url = `https://api.openweathermap.org/data/2.5/weather?id=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
         } else {
@@ -63,7 +61,6 @@ export default function App() {
     } catch (err) {
       console.error("Error obteniendo datos del clima", err);
       setWeather(null);
-
       setNotification({ type: "error", message: "Error al actualizar el clima" });
       setShowNotification(true);
       setTimeout(() => setShowNotification(false), 1500);
@@ -71,7 +68,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [API_KEY]);
 
   const formatDate = (date) => {
     const hours = date.getHours().toString().padStart(2, "0");
@@ -79,7 +76,6 @@ export default function App() {
     return `${hours}:${minutes}`;
   };
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!manualSearch) {
       fetchWeather(selectedCity.id, false);
@@ -90,7 +86,7 @@ export default function App() {
       setDateTime(formatDate(new Date()));
     }, 60000);
     return () => clearInterval(interval);
-  }, [selectedCity]);
+  }, [selectedCity, manualSearch, fetchWeather]);
 
   useEffect(() => {
     const fetchAllCitiesWeather = async () => {
@@ -104,7 +100,6 @@ export default function App() {
             condition: res.data.weather[0].description,
             icon: res.data.weather[0].icon
           };
-          // Espera 500ms entre peticiones
           await new Promise(resolve => setTimeout(resolve, 500));
         } catch {
           weatherData[city.id] = {
@@ -117,8 +112,7 @@ export default function App() {
       setCitiesWeather(weatherData);
     };
     fetchAllCitiesWeather();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [API_KEY]);
 
   const handleManualUpdate = () => {
     fetchWeather(selectedCity.id, true);
@@ -150,11 +144,9 @@ export default function App() {
       <Header dateTime={dateTime} />
       <SearchBar onSearch={handleSearch} />
 
-      {/* Notificación animada */}
       {notification && (
         <div
-          className={`fixed top-6 right-8 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-lg z-50 transform transition-all duration-500 ease-in-out ${showNotification ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3"
-            }`}
+          className={`fixed top-6 right-8 bg-blue-600 text-white px-6 py-3 rounded-xl shadow-lg z-50 transform transition-all duration-500 ease-in-out ${showNotification ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-3"}`}
           style={{ minWidth: "220px" }}
         >
           <span className="flex items-center gap-2">
@@ -202,7 +194,6 @@ export default function App() {
         ))}
       </div>
 
-      {/* Botón de actualizar clima */}
       <div className="flex justify-center my-8">
         <button
           onClick={handleManualUpdate}
