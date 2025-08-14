@@ -39,14 +39,10 @@ export default function App() {
       }
 
       let url;
-      if (process.env.NODE_ENV === "production") {
-        url = `/api/weather?city=${isNaN(cityOrId) ? cityOrId : cities.find(c => c.id === cityOrId).name}`;
+      if (!isNaN(cityOrId)) {
+        url = `https://api.openweathermap.org/data/2.5/weather?id=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
       } else {
-        if (!isNaN(cityOrId)) {
-          url = `https://api.openweathermap.org/data/2.5/weather?id=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
-        } else {
-          url = `https://api.openweathermap.org/data/2.5/weather?q=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
-        }
+        url = `https://api.openweathermap.org/data/2.5/weather?q=${cityOrId}&units=metric&lang=es&appid=${API_KEY}`;
       }
 
       const res = await axios.get(url);
